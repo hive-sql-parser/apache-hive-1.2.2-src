@@ -291,7 +291,12 @@ public class Driver implements CommandProcessor {
     this(conf);
     this.userName = userName;
   }
-
+  /**
+   *由于CliDriver需要得到一个Driver类的实例，所以首先看一下Driver的构造方法。
+   * Driver有三个构造函数，主要功能也就是设置类的实例变量HiveConf。
+   * SessionState前文已经有介绍，SessionState返回了当前会话的一些信息，
+   * 提取配置文件，初始化Driver实例。
+   */
   public Driver() {
     if (SessionState.get() != null) {
       conf = SessionState.get().getConf();
@@ -387,6 +392,26 @@ public class Driver implements CommandProcessor {
 
     try {
       command = new VariableSubstitution().substitute(conf,command);
+      /**
+       * 顺便提一下Context对象，在Context的源码注释当中提到， 每一个查询都要对应一个Context对象，
+       * 不同查询之间Context对象是不可重用的， 执行完一个查询之后需要clear对应的Context对象
+       * （主要是语法分析用到的temp文件目录），在Hive的实现中也是这么做的。
+       * 回顾上一篇文章，从CliDriver循环的读取用户指令，
+       * 每读取到一条指令都要进行processLine，processCmd，processLocalCmd的处理，
+       * 然后提交给Driver编译解析。Context对象是在compile函数中实例化的，
+       * 也就说每一条查询都会创建一个Context对象，当执行完一条查询从Driver返回到processLocalCmd中时
+       * ，都会调用Driver对象的close函数对Context进行清理（ctx.clear），
+       * 这样就保证了一条查询对应一个Context对象。对于DriverContext对象也是类似，
+       * 在execute函数中实例化，Driver的close函数中关闭（driverCtx.shutdown），
+       * 和Context相比一个用来辅助语义分析，一个用来辅助任务执行。
+       * 还有，我们发现在processCmd函数中通过CommandProcessorFactory设置了Driver类的实例对象，
+       * 也就是每一条查询都需要一个Driver对象进行处理，那这些Driver对象之间是否可以共享呢？
+       * 答案是肯定的，在CommandProcessorFactory中维持了一个HiveConf到Driver的Map，
+       * 每次获取Driver对象时都是根据conf对象来查找到的，如果不存在才重新创建一个Driver对象，
+       * 而HiveConf对象又是在CliDriver的run方法中实例化的，与一个CliSessionState对应，
+       * 所以Driver实例应该是与一个Cli的会话对应，同一个会话内部的查询共享一个Driver实例。
+       */
+
       ctx = new Context(conf);
       ctx.setTryCount(getTryCount());
       ctx.setCmd(command);
@@ -1066,6 +1091,13 @@ public class Driver implements CommandProcessor {
     perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.RELEASE_LOCKS);
   }
 
+  /**
+   * run函数通过调用runInternal方法处理用户指令，在处理完成runInternal之后，
+   * 如果执行过程中出现出错，还附加了对错误码和错误信息的处理，此处省略。
+   * @param command
+   * @return
+   * @throws CommandNeedRetryException
+   */
   @Override
   public CommandProcessorResponse run(String command)
       throws CommandNeedRetryException {
@@ -1091,7 +1123,7 @@ public class Driver implements CommandProcessor {
     if(!(mdf instanceof JsonMetaDataFormatter)) {
       return cpr;
     }
-    /*Here we want to encode the error in machine readable way (e.g. JSON)
+    /**Here we want to encode the error in machine readable way (e.g. JSON)
      * Ideally, errorCode would always be set to a canonical error defined in ErrorMsg.
      * In practice that is rarely the case, so the messy logic below tries to tease
      * out canonical error code if it can.  Exclude stack trace from output when
@@ -1135,6 +1167,13 @@ public class Driver implements CommandProcessor {
     return cpr;
   }
 
+  /**
+   * 还没完~当execute函数执行完成后，返回到runInternal函数中，接着释放锁，
+   * 与之前的PreRunHook相对应，还需要加载相应用户自定义的PostRunHook（代码不再重复），
+   * 最后才调用creatProcessorResponse，创建响应对象CommandProcessorResponse并返回。
+   * @param command
+   * @return
+   */
   public CommandProcessorResponse compileAndRespond(String command) {
     return createProcessorResponse(compileInternal(command));
   }
@@ -1155,6 +1194,14 @@ public class Driver implements CommandProcessor {
     return ret;
   }
 
+  /**
+   * runInternal方法包含的主要操作有，处理preRunHook（具体功能可以顾名思义哦），
+   * compile ， execute， 处理postRunHook以及构造CommandProcessorResponse并返回
+   * @param command
+   * @param alreadyCompiled
+   * @return
+   * @throws CommandNeedRetryException
+   */
   private CommandProcessorResponse runInternal(String command, boolean alreadyCompiled)
       throws CommandNeedRetryException {
     errorMessage = null;
@@ -1164,7 +1211,13 @@ public class Driver implements CommandProcessor {
     if (!validateConfVariables()) {
       return createProcessorResponse(12);
     }
-
+    /**
+     * 处理preRunHook，首先根据配置文件和指令，构造用户Hook执行的上下文hookContext，
+     * 然后读取用户PreRunHook配置指定的类（字符串），
+     * 此配置项对应于Hive配置文件当中的“hive.exec.driver.run.hooks”一项，
+     * 利用反射机制Class.forName实例化PreRunHook类实例（getHook函数完成），
+     * 依次执行各钩子的功能（preDriverRun函数完成）
+     */
     HiveDriverRunHookContext hookContext = new HiveDriverRunHookContextImpl(conf, command);
     // Get all the driver run hooks and pre-execute them.
     List<HiveDriverRunHook> driverRunHooks;
@@ -1341,7 +1394,10 @@ public class Driver implements CommandProcessor {
     perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.DRIVER_EXECUTE);
     boolean noName = StringUtils.isEmpty(conf.getVar(HiveConf.ConfVars.HADOOPJOBNAME));
     int maxlen = conf.getIntVar(HiveConf.ConfVars.HIVEJOBNAMELENGTH);
-
+    /**
+     * 首先是从编译得到的查询计划QueryPlan里获取基本的查询ID，查询字串等信息，
+     * 并在回话状态中把当前查询字串和查询计划插入到历史记录中。
+     */
     String queryId = plan.getQueryId();
     String queryStr = plan.getQueryStr();
 
@@ -1403,7 +1459,12 @@ public class Driver implements CommandProcessor {
       // As soon as a task isRunnable, it is put in a queue
       // At any time, at most maxthreads tasks can be running
       // The main thread polls the TaskRunners to check if they have finished.
-
+      /**
+       * 创建执行上下文DriverContext，它记录的信息主要包括可执行的任务队列(Queue<Task> runnable),
+       * 正在运行的任务队列(Queue<TaskRunner> running),
+       * 当前启动的任务数curJobNo, statsTasks（Map<String, StatsTask>, what used for?）
+       * 以及语义分析Semantic Analyzers依赖的Context对象等。
+       */
       DriverContext driverCxt = new DriverContext(ctx);
       driverCxt.prepare(plan);
 
@@ -1416,6 +1477,9 @@ public class Driver implements CommandProcessor {
       SessionState.get().setLocalMapRedErrors(new HashMap<String, List<String>>());
 
       // Add root Tasks to runnable
+      /**
+       * 在实例化DriverContext对象之后，就将查询计划plan中的任务放入到DriverContext的runnable队列中。
+       */
       for (Task<? extends Serializable> tsk : plan.getRootTasks()) {
         // This should never happen, if it does, it's a bug with the potential to produce
         // incorrect results.
@@ -1426,6 +1490,14 @@ public class Driver implements CommandProcessor {
       perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.TIME_TO_SUBMIT);
       perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.RUN_TASKS);
       // Loop while you either have tasks running, or tasks queued up
+      /**
+       * 下面就开始运行任务Task，整个任务的运行由一个循环控制，只要DriverContext没有被关闭，
+       * 并且runnable和running队列中还有任务就一直循环。
+       * 为了方便描述，下文将一次对任务循环过程的每一步进行说明，这里只给出循环判断条件。
+       */
+      /**
+       * 在循环内部，首先不停的从runnable队列中抽取队首的任务，然后launch该任务。
+       */
       while (!destroyed && driverCxt.isRunning()) {
 
         // Launch upto maxthreads tasks
@@ -1439,12 +1511,27 @@ public class Driver implements CommandProcessor {
         }
 
         // poll the Tasks to see which one completed
+        /**
+         * 完成任务的启动之后，将调用DriverContext的pollFinished函数，查看任务是否执行完毕，
+         * 如果有任务完成，则将该任务出队，并将已完成的任务添加到钩子上下文HookContext中。
+         */
         TaskRunner tskRun = driverCxt.pollFinished();
         if (tskRun == null) {
           continue;
         }
         hookContext.addCompleteTask(tskRun);
 
+        /**
+         * 针对一个已完成的任务，首先获取任务的结果对象TaskResult和退出状态,
+         * 如果任务非正常退出，则第一步先判断任务是否支持Retry，
+         * 如果支持，关闭当前DriverContext，设置jobTracker为初始状态，
+         * 抛出CommandNeedRetry异常，这个异常会在CliDriver的processLocalCmd中捕获，
+         * 然后尝试重新处理该命令，参见上一篇文章的说明。
+         * 如果任务不支持Retry，则启动备份任务backupTask（类似于回滚？），
+         * 并添加到runnable队列，在下次循环过程中执行。
+         * 如果没有backupTask，则查找用户配置“hive.exec.failure.hooks”,
+         * 根据用户配置相应出错处理，并关闭DriverContext， 返回退出码。
+         */
         Task<? extends Serializable> tsk = tskRun.getTask();
         TaskResult result = tskRun.getTaskResult();
 
@@ -1490,7 +1577,11 @@ public class Driver implements CommandProcessor {
             return exitVal;
           }
         }
-
+        /**
+         * 最后调用DriverContext的finished函数，对完成的任务进行处理（处理逻辑没看懂），
+         * 然后判断当前任务是否包含子任务，如果包含则依次将子任务添加到runnable队列，
+         * 下次循环中被启动执行。
+         */
         driverCxt.finished(tskRun);
 
         if (SessionState.get() != null) {
@@ -1513,6 +1604,14 @@ public class Driver implements CommandProcessor {
       // the jobtracker setting to its initial value
       ctx.restoreOriginalTracker();
 
+      /**
+       * 当所有的任务都完成之后，如果发现DriverContext已经被关闭，表明任务取消，打印信息并返回对应的状态码。
+       * 最后清除任务执行中不完整的输出，并加载执行用户指定的"hive.exec.post.hooks"，完成对应的钩子功能。
+       * 对于执行过程中出现的异常，CommandNeedRetryException将会直接向上抛出，其他Exception，直接打印出错信息。
+       * 无论是否发生异常，只要能够获取到任务执行过程中的MapReduce状态信息，都将在finally语句块中打印。
+       * （限于篇幅，此处只给出部分代码，钩子的处理方式前文已经给出不再详述，异常处理的部分，有兴趣的执行查看）
+       */
+      //判断DriverContext是否被关闭
       if (driverCxt.isShutdown()) {
         SQLState = "HY008";
         errorMessage = "FAILED: Operation cancelled";
@@ -1520,7 +1619,7 @@ public class Driver implements CommandProcessor {
         return 1000;
       }
 
-      // remove incomplete outputs.
+      // remove incomplete outputs. 删除不完整的输出
       // Some incomplete outputs may be added at the beginning, for eg: for dynamic partitions.
       // remove them
       HashSet<WriteEntity> remOutputs = new HashSet<WriteEntity>();
@@ -1596,6 +1695,7 @@ public class Driver implements CommandProcessor {
         console.printInfo("Total MapReduce CPU Time Spent: " + Utilities.formatMsecToStr(totalCpu));
       }
     }
+    //任务正常完成，打印OK
     plan.setDone();
 
     if (SessionState.get() != null) {
@@ -1641,6 +1741,14 @@ public class Driver implements CommandProcessor {
    *          number of map-reduce jobs
    * @param cxt
    *          the driver context
+   *
+   * 在launch一个任务的过程中，根据任务类型（是不是MapReduceTask或者ConditialTask），
+   * 做一些操作(don't know what used for），将DriverContext当前已启动任务数curJobNo加1，
+   * 然后根据配置文件conf，查询计划plan，执行上下文cxt（DriverContext），初始化一个任务，
+   * 接着创建任务结果TaskResult对象和任务执行对象TaskRunner，
+   * 将TaskRunner放入DriverContext的running队列中，表示该任务正在运行。
+   * 最后，根据配置文件指定的任务运行模式，即是否支持并行运行，启动任务。
+   *
    */
   private TaskRunner launchTask(Task<? extends Serializable> tsk, String queryId, boolean noName,
       String jobname, int jobs, DriverContext cxt) throws HiveException {
@@ -1664,6 +1772,7 @@ public class Driver implements CommandProcessor {
     // Launch Task
     if (HiveConf.getBoolVar(conf, HiveConf.ConfVars.EXECPARALLEL) && tsk.isMapRedTask()) {
       // Launch it in the parallel mode, as a separate thread only for MR tasks
+      //并发执行
       if (LOG.isInfoEnabled()){
         LOG.info("Starting task [" + tsk + "] in parallel");
       }
@@ -1673,6 +1782,7 @@ public class Driver implements CommandProcessor {
       if (LOG.isInfoEnabled()){
         LOG.info("Starting task [" + tsk + "] in serial mode");
       }
+      //顺序执行
       tskRun.runSequential();
     }
     return tskRun;

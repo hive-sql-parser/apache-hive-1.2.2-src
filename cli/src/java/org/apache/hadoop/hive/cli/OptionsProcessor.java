@@ -137,6 +137,12 @@ public class OptionsProcessor {
     return true;
   }
 
+  /**
+   * 根据stage1解析的参数内容，填充CliSessionState的字符串，
+   * 比如用户输入了-e 则这个stage就把-e 对应的字符串赋值给CliSessionState的 execString成员。
+   * @param ss
+   * @return
+   */
   public boolean process_stage2(CliSessionState ss) {
     ss.getConf();
 

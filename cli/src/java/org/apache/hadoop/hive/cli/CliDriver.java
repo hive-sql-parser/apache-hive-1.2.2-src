@@ -98,7 +98,14 @@ public class CliDriver {
   protected ConsoleReader reader;
   private Configuration conf;
 
+
+   // 构造函数
   public CliDriver() {
+    /**
+     * SessionState封装了一个会话的关联的数据，包括配置信息HiveConf，输入输出流，指令类型，用户名称、IP地址等等。
+     * SessionState 是一个与线程关联的静态本地变量ThreadLocal，任何一个线程都对应一个SessionState，
+     * 能够在Hive代码的任何地方获取到（大量被使用到），以返回用户相关或者配置信息等。
+     */
     SessionState ss = SessionState.get();
     conf = (ss != null) ? ss.getConf() : new Configuration();
     Log LOG = LogFactory.getLog("CliDriver");
@@ -108,7 +115,15 @@ public class CliDriver {
     console = new LogHelper(LOG);
   }
 
+  /**
+   * @param cmd
+   * @return
+   */
   public int processCmd(String cmd) {
+    /**
+     * 首先是设置当前clisession的用户上一条指令，然后使用正则表达式，
+     * 将用户输入的指令从空格，制表符等出断开（tokenizeCmd函数），得到token数组。
+     */
     CliSessionState ss = (CliSessionState) SessionState.get();
     ss.setLastCommand(cmd);
     // Flush the print stream, so it doesn't include output from the last command
@@ -116,7 +131,13 @@ public class CliDriver {
     String cmd_trimmed = cmd.trim();
     String[] tokens = tokenizeCmd(cmd_trimmed);
     int ret = 0;
-
+    /**
+     * 然后根据用户的输入，进行不同的处理，这边的处理主要包括：
+     * quit或exit： 关闭会话，退出hive
+     * source： 文件处理？不清楚对应什么操作
+     * ! 开头： 调用Linux系统的shell执行指令
+     * 本地模式：创建CommandProcessor, 执行用户指令
+     */
     if (cmd_trimmed.toLowerCase().equals("quit") || cmd_trimmed.toLowerCase().equals("exit")) {
 
       // if we have come this far - either the previous commands
@@ -161,6 +182,10 @@ public class CliDriver {
       }
     }  else { // local mode
       try {
+        /**
+         * 限于篇幅原因，前面三种情况的代码不再详述，重点介绍Hive的本地模式执行，
+         * 也就是我们常用的HiveQL语句，DFS命令等的处理方式：
+         */
         CommandProcessor proc = CommandProcessorFactory.get(tokens, (HiveConf) conf);
         ret = processLocalCmd(cmd, proc, ss);
       } catch (SQLException e) {
@@ -192,6 +217,15 @@ public class CliDriver {
     return cmd.split("\\s+");
   }
 
+  /**
+   * 到此Hive对用户的一个指令cmd，配置了会话状态CliSessionState，选择了一个合适的CommandProcessor，
+   * CliDriver将进行他的最后一步操作，提交用户的查询到指定的CommandProcessor，并获取结果。
+   * 这一切都是在processLocalCmd中执行的。
+   * @param cmd
+   * @param proc
+   * @param ss
+   * @return
+   */
   int processLocalCmd(String cmd, CommandProcessor proc, CliSessionState ss) {
     int tryCount = 0;
     boolean needRetry;
@@ -201,8 +235,10 @@ public class CliDriver {
       try {
         needRetry = false;
         if (proc != null) {
+          //如果CommandProcessor是Driver实例
           if (proc instanceof Driver) {
             Driver qp = (Driver) proc;
+            //获取标准输出流，打印结果信息
             PrintStream out = ss.out;
             long start = System.currentTimeMillis();
             if (ss.getIsVerbose()) {
@@ -210,6 +246,7 @@ public class CliDriver {
             }
 
             qp.setTryCount(tryCount);
+            //driver实例运行用户指令，获取运行结果响应码
             ret = qp.run(cmd).getResponseCode();
             if (ret != 0) {
               qp.close();
@@ -217,14 +254,16 @@ public class CliDriver {
             }
 
             // query has run capture the time
+            //统计指令的运行时间
             long end = System.currentTimeMillis();
             double timeTaken = (end - start) / 1000.0;
 
             ArrayList<String> res = new ArrayList<String>();
-
+            //打印查询结果的列名称
             printHeader(qp, out);
 
             // print the results
+            //打印查询结果
             int counter = 0;
             try {
               if (out instanceof FetchConverter) {
@@ -246,7 +285,7 @@ public class CliDriver {
                   + org.apache.hadoop.util.StringUtils.stringifyException(e));
               ret = 1;
             }
-
+            //关闭结果
             int cret = qp.close();
             if (ret == 0) {
               ret = cret;
@@ -259,6 +298,8 @@ public class CliDriver {
             console.printInfo("Time taken: " + timeTaken + " seconds" +
                 (counter == 0 ? "" : ", Fetched: " + counter + " row(s)"));
           } else {
+            // 如果proc不是Driver，也就是用户执行的是非SQL查询操作，直接执行语句，
+            // 不执行fetchResult的操作
             String firstToken = tokenizeCmd(cmd.trim())[0];
             String cmd_1 = getFirstCmd(cmd.trim(), firstToken.length());
 
@@ -274,6 +315,7 @@ public class CliDriver {
           }
         }
       } catch (CommandNeedRetryException e) {
+        //如果执行过程中出现异常，修改needRetry标志，下次循环是retry。
         console.printInfo("Retry query with a different approach...");
         tryCount++;
         needRetry = true;
@@ -289,6 +331,8 @@ public class CliDriver {
    *
    * @param qp Driver that executed the command
    * @param out PrintStream which to send output to
+   * printHeader函数通过调用driver.getSchema.getFiledSchema，
+   * 获取查询结果的列集合 ，然后依次打印出列名。
    */
   private void printHeader(Driver qp, PrintStream out) {
     List<FieldSchema> fieldSchemas = qp.getSchema().getFieldSchemas();
@@ -617,13 +661,17 @@ public class CliDriver {
     return new Completer[] {propCompleter, customCompletor};
   }
 
+  //任务执行入口
   public static void main(String[] args) throws Exception {
     int ret = new CliDriver().run(args);
     System.exit(ret);
   }
 
   public  int run(String[] args) throws Exception {
-
+    /**
+     * 对输入的指令进行初步解析，提取-e -h hiveconf hivevar等参数信息，设置用户提供的系统和Hive环境变量。
+     * 详细实现，参考OptionsProcessor类，不再详细描述。
+     */
     OptionsProcessor oproc = new OptionsProcessor();
     if (!oproc.process_stage1(args)) {
       return 1;
@@ -631,6 +679,7 @@ public class CliDriver {
 
     // NOTE: It is critical(关键) to do this here so that log4j is reinitialized
     // before any of the other core hive classes are loaded
+    // 初始化log4j日志组件
     boolean logInitFailed = false;
     String logInitDetailMessage;
     try {
@@ -640,6 +689,11 @@ public class CliDriver {
       logInitDetailMessage = e.getMessage();
     }
 
+    /**
+     * 初始化HiveConf，并根据HiveConf实例化CliSessionState，设置输入输出流为标准控制台。
+     * CliSessionState 继承了SessionState类，创建了一些记录用户输入的字符串，
+     * 在实例化的过程中，主要是用来记录HiveConf，并生成一个会话ID，参见SessionState构造函数.
+     */
     CliSessionState ss = new CliSessionState(new HiveConf(SessionState.class));
     ss.in = System.in;
     try {
@@ -650,10 +704,17 @@ public class CliDriver {
       return 3;
     }
 
+    /**
+     * 根据stage1解析的参数内容，填充CliSessionState的字符串，
+     * 比如用户输入了-e 则这个stage就把-e 对应的字符串赋值给CliSessionState的 execString成员。
+     */
     if (!oproc.process_stage2(ss)) {
       return 2;
     }
 
+    /**
+     * 在允许打印输出的模式下，如果日志初始化失败，打印失败信息
+     */
     if (!ss.getIsSilent()) {
       if (logInitFailed) {
         System.err.println(logInitDetailMessage);
@@ -663,6 +724,9 @@ public class CliDriver {
     }
 
     // set all properties specified via command line
+    /**
+     * 将用户命令行输入的配置信息和变量等，覆盖HiveConf的默认值
+     */
     HiveConf conf = ss.getConf();
     for (Map.Entry<Object, Object> item : ss.cmdProperties.entrySet()) {
       conf.set((String) item.getKey(), (String) item.getValue());
@@ -674,8 +738,10 @@ public class CliDriver {
     prompt = new VariableSubstitution().substitute(conf, prompt);
     prompt2 = spacesForString(prompt);
 
+    /**
+     * 设置当前回话状态，执行CLI驱动
+     */
     SessionState.start(ss);
-
     // execute cli driver work
     try {
       return executeDriver(ss, conf, oproc);
@@ -688,9 +754,15 @@ public class CliDriver {
    * Execute the cli work
    * @param ss CliSessionState of the CLI driver
    * @param conf HiveConf for the driver session
-   * @param oproc Operation processor of the CLI invocation
+   * @param oproc Operation processor of the CLI invocation(调用)
    * @return status of the CLI command execution
    * @throws Exception
+   * 在进入executeDriver之前，我们可以认为Hive处理的是用户进入Hive程序的指令，到此用户已经进入了Hive，
+   * Cli的Driver将不断读取用户的HiveQL语句并解析，提交给Driver。
+   * executeDriver函数内部出了根据用户参数做出的一些执行响应外，还设置了用户HiveQL的执行历史记录，
+   * 也就是方便我们使用上下标键查看之前执行的指令的功能，不再详述。
+   * executeDriver函数内部核心的代码是通过while循环不断按行读取用户的输入，然后调用ProcessLine拼接一条命令cmd，
+   * 传递给processCmd处理用户输入。下面就来看看processCmd函数。
    */
   private int executeDriver(CliSessionState ss, HiveConf conf, OptionsProcessor oproc)
       throws Exception {

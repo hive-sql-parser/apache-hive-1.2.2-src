@@ -54,6 +54,20 @@ public final class CommandProcessorFactory {
     return getForHiveCommandInternal(cmd, conf, false);
   }
 
+  /**
+   * 其中getForHiveCommand函数首先根据tokens的第一个字串，也就是用户输入指令的第一个单词，
+   * 在HiveCommand这个enum中定义的一些非SQL查询操作集合中进行匹配，确定相应的HiveCommand类型。
+   * 在依据HiveCommand选择合适的CommandProcessor实现方式，
+   * 比如dfs命令对应的DFSProcessor，set命令对应的SetProcessor等，
+   * 如果用户输入的是诸如select之类的SQL查询， getForHiveCommand返回null，
+   * 直接在get函数中根据配置文件conf选择或者生成一个Driver类实例，并作为CommandProcessor返回。
+   * 详细的代码参考CommandProcessorFactory和HiveCommand类。
+   * @param cmd
+   * @param conf
+   * @param testOnly
+   * @return
+   * @throws SQLException
+   */
   public static CommandProcessor getForHiveCommandInternal(String[] cmd, HiveConf conf,
                                                            boolean testOnly)
     throws SQLException {
@@ -101,6 +115,14 @@ public final class CommandProcessorFactory {
     }
   }
 
+  /**
+   * CommandProcessorFactory根据用户指令生成的tokens和配置文件，
+   * 返回CommandProcessor的一个具体实现。
+   * @param cmd
+   * @param conf
+   * @return
+   * @throws SQLException
+   */
   public static CommandProcessor get(String[] cmd, HiveConf conf)
       throws SQLException {
     CommandProcessor result = getForHiveCommand(cmd, conf);
