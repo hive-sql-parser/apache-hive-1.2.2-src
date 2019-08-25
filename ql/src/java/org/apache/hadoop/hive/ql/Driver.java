@@ -1181,7 +1181,7 @@ public class Driver implements CommandProcessor {
   private int compileInternal(String command) {
     int ret;
     synchronized (compileMonitor) {
-      ret = compile(command);
+      ret = compile(command); //编译，主要是将sql字符串翻译成ast树，然后翻译成可执行的task树 ，然后再优化执行树。
     }
     if (ret != 0) {
       try {
@@ -1268,6 +1268,7 @@ public class Driver implements CommandProcessor {
         return createProcessorResponse(ret);
       }
     }
+    //执行所有的task
     ret = execute();
     if (ret != 0) {
       //if needRequireLock is false, the release here will do nothing because there is no lock
