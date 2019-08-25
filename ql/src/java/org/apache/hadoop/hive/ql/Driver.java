@@ -1268,7 +1268,8 @@ public class Driver implements CommandProcessor {
         return createProcessorResponse(ret);
       }
     }
-    //执行所有的task
+    //执行物理计划，即提交相应的 job 给 hadoop 进行执行。
+    //执行完成后，会将执行结果通过 CommandProcessorResponse 类包装返回给客户端。
     ret = execute();
     if (ret != 0) {
       //if needRequireLock is false, the release here will do nothing because there is no lock

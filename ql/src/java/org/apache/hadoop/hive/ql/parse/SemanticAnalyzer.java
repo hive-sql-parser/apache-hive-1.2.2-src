@@ -1132,6 +1132,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
    * @param qb
    * @param ctx_1
    * @throws SemanticException
+   * 分析AST树，AST拆分成查询子块，信息记录在QB，这个QB在下面几个阶段都需要用到，SemanticAnalyzer.doPhase1完成
    */
   @SuppressWarnings({"fallthrough", "nls"})
   public boolean doPhase1(ASTNode ast, QB qb, Phase1Ctx ctx_1, PlannerContext plannerCtx)
@@ -1544,6 +1545,13 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
   public void getMetaData(QB qb) throws SemanticException {
     getMetaData(qb, null);
   }
+
+  /**
+   * 从metastore中获取表的信息，SemanticAnalyzer.getMetaData完成
+   * @param qb
+   * @param parentInput
+   * @throws SemanticException
+   */
 
   @SuppressWarnings("nls")
   public void getMetaData(QB qb, ReadEntity parentInput) throws SemanticException {
@@ -9649,6 +9657,13 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
     return genPlan(qb, false);
   }
 
+  /**
+   * 生成逻辑执行计划，LogicalPlan Gen，SemanticAnalyzer.genPlan完成
+   * @param qb
+   * @param skipAmbiguityCheck
+   * @return
+   * @throws SemanticException
+   */
   @SuppressWarnings("nls")
   public Operator genPlan(QB qb, boolean skipAmbiguityCheck)
       throws SemanticException {
