@@ -53,6 +53,12 @@ import org.apache.hadoop.mapred.Reporter;
 /**
  * Base operator implementation.
  **/
+/**
+ * 由于Hive的MapReduce程序是一个动态的程序，即不确定一个MapReduce Job会进行什么运算，可能是Join，也可能是GroupBy，
+ * 所以Operator将所有运行时需要的参数保存在OperatorDesc中，OperatorDesc在提交任务前序列化到HDFS上，在MapReduce任务执行前从HDFS读取并反序列化。
+ * Map阶段OperatorTree在HDFS上的位置在Job.getConf(“hive.exec.plan”) + “/map.xml”
+ * @param <T>
+ */
 public abstract class Operator<T extends OperatorDesc> implements Serializable,Cloneable,
   Node {
 
@@ -201,7 +207,7 @@ public abstract class Operator<T extends OperatorDesc> implements Serializable,C
   }
 
   // non-bean fields needed during compilation
-  private RowSchema rowSchema;
+  private RowSchema rowSchema; //RowSchema表示Operator的输出字段
 
   public void setSchema(RowSchema rowSchema) {
     this.rowSchema = rowSchema;
@@ -226,6 +232,7 @@ public abstract class Operator<T extends OperatorDesc> implements Serializable,C
   protected transient String id;
   // object inspectors for input rows
   // We will increase the size of the array on demand
+  // InputObjInspector outputObjInspector解析输入和输出字段
   protected transient ObjectInspector[] inputObjInspectors = new ObjectInspector[1];
   // for output rows of this operator
   protected transient ObjectInspector outputObjInspector;
@@ -234,6 +241,9 @@ public abstract class Operator<T extends OperatorDesc> implements Serializable,C
    * A map of output column name to input expression map. This is used by
    * optimizer and built during semantic analysis contains only key elements for
    * reduce sink and group by op
+   * Hive每一行数据经过一个Operator处理之后，会对字段重新编号，
+   * colExprMap记录每个表达式经过当前Operator处理前后的名称对应关系，
+   * 在下一个阶段逻辑优化阶段用来回溯字段名
    */
   protected Map<String, ExprNodeDesc> colExprMap;
 

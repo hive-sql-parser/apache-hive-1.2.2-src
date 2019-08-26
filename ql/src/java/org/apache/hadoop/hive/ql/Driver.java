@@ -78,6 +78,8 @@ import org.apache.hadoop.hive.ql.metadata.DummyPartition;
 import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.Partition;
+
+
 import org.apache.hadoop.hive.ql.metadata.Table;
 import org.apache.hadoop.hive.ql.metadata.formatting.JsonMetaDataFormatter;
 import org.apache.hadoop.hive.ql.metadata.formatting.MetaDataFormatUtils;

@@ -41,11 +41,13 @@ public class QBParseInfo {
 
   private final boolean isSubQ;
   private final String alias;
-  private ASTNode joinExpr;
+  private ASTNode joinExpr;  //JoinExpr保存TOK_JOIN节点
   private ASTNode hints;
   private final HashMap<String, ASTNode> aliasToSrc;
   /**
    * insclause-0 -> TOK_TAB ASTNode
+   * nameToDest这个HashMap保存查询单元的输出，key的形式是inclause-i（由于Hive支持Multi Insert语句，所以可能有多个输出），
+   * value是对应的ASTNode节点，即TOK_DESTINATION节点
    */
   private final HashMap<String, ASTNode> nameToDest;
   /**

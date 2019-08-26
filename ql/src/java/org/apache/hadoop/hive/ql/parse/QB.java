@@ -46,12 +46,12 @@ public class QB {
   private int numSels = 0;
   private int numSelDi = 0;
   private HashMap<String, String> aliasToTabs;
-  private HashMap<String, QBExpr> aliasToSubq;
+  private HashMap<String, QBExpr> aliasToSubq;  //保存子查询的QB对象，aliasToSubq key值是子查询的别名
   private HashMap<String, Map<String, String>> aliasToProps;
   private List<String> aliases;
-  private QBParseInfo qbp;
-  private QBMetaData qbm;
-  private QBJoinTree qbjoin;
+  private QBParseInfo qbp; //QBParseInfo保存一个基本SQL单元中的给个操作部分的AST Tree结构，QBParseInfo#nameToDest这个HashMap保存查询单元的输出，key的形式是inclause-i（由于Hive支持Multi Insert语句，所以可能有多个输出），value是对应的ASTNode节点，即TOK_DESTINATION节点。类QBParseInfo其余HashMap属性分别保存输出和各个操作的ASTNode节点的对应关系。
+  private QBMetaData qbm;    //qbm保存每个输入表的元信息，比如表在HDFS上的路径，保存表数据的文件格式等。
+  private QBJoinTree qbjoin; //QBJoinTree是对Join语法树的结构化。
   private String id;
   private boolean isQuery;
   private boolean isAnalyzeRewrite;
@@ -96,7 +96,7 @@ public class QB {
   public void print(String msg) {
     LOG.info(msg + "alias=" + qbp.getAlias());
     for (String alias : getSubqAliases()) {
-      QBExpr qbexpr = getSubqForAlias(alias);
+      QBExpr qbexpr = getSubqForAlias(alias);  //QBExpr这个对象是为了表示Union操作。
       LOG.info(msg + "start subquery " + alias);
       qbexpr.print(msg + " ");
       LOG.info(msg + "end subquery " + alias);

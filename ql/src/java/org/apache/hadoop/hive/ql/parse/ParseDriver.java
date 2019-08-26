@@ -184,7 +184,7 @@ public class ParseDriver {
       throws ParseException {
     LOG.info("Parsing command: " + command);
 
-    HiveLexerX lexer = new HiveLexerX(new ANTLRNoCaseStringStream(command));
+    HiveLexerX lexer = new HiveLexerX(new ANTLRNoCaseStringStream(command));  //词法解析
     TokenRewriteStream tokens = new TokenRewriteStream(lexer);
     if (ctx != null) {
       if ( setTokenRewriteStream) {
@@ -192,14 +192,14 @@ public class ParseDriver {
       }
       lexer.setHiveConf(ctx.getConf());
     }
-    HiveParser parser = new HiveParser(tokens);
+    HiveParser parser = new HiveParser(tokens); //语法解析
     if (ctx != null) {
       parser.setHiveConf(ctx.getConf());
     }
     parser.setTreeAdaptor(adaptor);
     HiveParser.statement_return r = null;
     try {
-      r = parser.statement();
+      r = parser.statement();    //转化为AST
     } catch (RecognitionException e) {
       e.printStackTrace();
       throw new ParseException(parser.errors);
@@ -249,7 +249,7 @@ public class ParseDriver {
 
     if (lexer.getErrors().size() == 0 && parser.errors.size() == 0) {
       LOG.info("Parse Completed");
-    } else if (lexer.getErrors().size() != 0) {
+    } else if (lexer.getErrors().sHiveParser ize() != 0) {
       throw new ParseException(lexer.getErrors());
     } else {
       throw new ParseException(parser.errors);
