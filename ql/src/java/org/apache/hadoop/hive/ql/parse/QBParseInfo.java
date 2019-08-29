@@ -53,6 +53,7 @@ public class QBParseInfo {
   /**
    * For 'insert into FOO(x,y) select ...' this stores the
    * insclause-0 -> x,y mapping
+   * 保持每个操作的ast
    */
   private final Map<String, List<String>> nameToDestSchema;
   private final HashMap<String, TableSample> nameToSample;

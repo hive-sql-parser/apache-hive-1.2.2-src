@@ -23,7 +23,7 @@ import org.apache.commons.logging.LogFactory;
 
 /**
  * Implementation of the query block expression.
- * 
+ *  QBExpr对象为了表示Union操作
  **/
 
 public class QBExpr {
@@ -41,7 +41,7 @@ public class QBExpr {
   private Opcode opcode;
   private QBExpr qbexpr1;
   private QBExpr qbexpr2;
-  private QB qb;
+  private QB qb;  //子查询
   private String alias;
 
   public String getAlias() {
