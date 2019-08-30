@@ -45,7 +45,7 @@ public class QB {
   private final int numGbys = 0;
   private int numSels = 0;
   private int numSelDi = 0;
-  private HashMap<String, String> aliasToTabs;
+  private HashMap<String, String> aliasToTabs; //生成TableScanOperator
   private HashMap<String, QBExpr> aliasToSubq;  //保存子查询的QB对象，aliasToSubq key值是子查询的别名
   private HashMap<String, Map<String, String>> aliasToProps;
   private List<String> aliases; //子查询

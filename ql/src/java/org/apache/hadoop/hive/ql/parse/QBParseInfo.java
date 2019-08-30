@@ -58,8 +58,8 @@ public class QBParseInfo {
   private final Map<String, List<String>> nameToDestSchema;
   private final HashMap<String, TableSample> nameToSample;
   private final Map<ASTNode, String> exprToColumnAlias;
-  private final Map<String, ASTNode> destToSelExpr;
-  private final HashMap<String, ASTNode> destToWhereExpr;
+  private final Map<String, ASTNode> destToSelExpr; //selectOperator
+  private final HashMap<String, ASTNode> destToWhereExpr; //生成FilterOperator
   private final HashMap<String, ASTNode> destToGroupby;
   private final Set<String> destRollups;
   private final Set<String> destCubes;
